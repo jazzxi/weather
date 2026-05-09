@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 智能天气看板</title>
+    <!-- 引入 FontAwesome 图标 -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --glass-bg: rgba(255, 255, 255, 0.1);
+            --glass-border: rgba(255, 255, 255, 0.2);
+            --accent-blue: #00d2ff;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; }
+
+        body {
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%);
+            color: white;
+        }
+
+        .container {
+            background: var(--glass-bg);
+            backdrop-filter: blur(25px);
+            border: 1px solid var(--glass-border);
+            border-radius: 40px;
+            padding: 40px;
+            width: 90%;
+            max-width: 400px;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.3);
+            text-align: center;
+            animation: slideUp 0.8s ease-out;
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* 搜索框 */
+        .search-box {
+            display: flex;
+            background: rgba(0,0,0,0.2);
+            border-radius: 20px;
+            padding: 8px 15px;
+            margin-bottom: 30px;
+            border: 1px solid transparent;
+            transition: 0.3s;
+        }
+
+        .search-box:focus-within {
+            border-color: var(--accent-blue);
+            background: rgba(0,0,0,0.3);
+        }
+
+        .search-box input {
+            background: none; border: none; outline: none;
+            color: white; width: 100%; font-size: 16px; padding: 10px;
+        }
+
+        .search-box button {
+            background: none; border: none; color: var(--accent-blue);
+            cursor: pointer; font-size: 18px;
+        }
+
+        /* 天气核心区域 */
+        .city { font-size: 36px; font-weight: 600; margin-bottom: 5px; }
+        .date { font-size: 14px; opacity: 0.6; margin-bottom: 20px; }
+        
+        .temp-box {
+            font-size: 80px; font-weight: 800; margin: 10px 0;
+            display: flex; justify-content: center; align-items: flex-start;
+        }
+        .temp-box span { font-size: 30px; margin-top: 15px; color: var(--accent-blue); }
+
+        .desc {
+            font-size: 22px; background: rgba(255,255,255,0.15);
+            padding: 6px 25px; border-radius: 50px;
+            display: inline-block; margin-bottom: 30px;
+        }
+
+        /* 详细参数展示 */
+        .details {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 15px;
+        }
+
+        .detail-item {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 15px; border-radius: 20px;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .detail-item i { font-size: 20px; color: var(--accent-blue); margin-bottom: 8px; display: block; }
+        .detail-item b { font-size: 18px; }
+        .detail-item p { font-size: 12px; opacity: 0.5; margin-top: 4px; }
+
+        #loading-tip { display: none; margin-bottom: 15px; color: var(--accent-blue); font-size: 14px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="search-box">
+        <input type="text" id="cityInp" placeholder="输入国内城市(如: 北京)">
+        <button id="searchBtn"><i class="fas fa-search"></i></button>
+    </div>
+
+    <div id="loading-tip">正在实时联网查询...</div>
+
+    <div id="weatherBody">
+        <h2 class="city" id="cityName">定位中...</h2>
+        <p class="date" id="date">2026年5月9日</p>
+        
+        <div class="temp-box">
+            <b id="temp">--</b><span>°C</span>
+        </div>
+        
+        <div class="desc" id="desc">--</div>
+
+        <div class="details">
+            <div class="detail-item">
+                <i class="fas fa-droplet"></i>
+                <b id="humidity">--</b>
+                <p>相对湿度</p>
+            </div>
+            <div class="detail-item">
+                <i class="fas fa-wind"></i>
+                <b id="wind">--</b>
+                <p>风力等级</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 和风天气 API Key (专用中国稳定接口)
+    const KEY = '7911e3895e6f47708573575979c3a378';
+
+    async function queryWeather() {
+        const cityValue = document.getElementById('cityInp').value.trim() || '上海';
+        const loading = document.getElementById('loading-tip');
+        loading.style.display = 'block';
+
+        try {
+            // 1. 地理位置查询 (获取城市ID)
+            const geoRes = await fetch(`https://geoapi.qweather.com/view/v2/city/lookup?location=${cityValue}&key=${KEY}`);
+            const geoData = await geoRes.json();
+            
+            if (geoData.code !== '200') throw new Error('城市名称输入有误');
+            const loc = geoData.location[0];
+
+            // 2. 获取实时天气数据
+            const weatherRes = await fetch(`https://devapi.qweather.com/v7/weather/now?location=${loc.id}&key=${KEY}`);
+            const weatherData = await weatherRes.json();
+
+            // 3. 更新界面
+            document.getElementById('cityName').innerText = loc.name;
+            document.getElementById('temp').innerText = weatherData.now.temp;
+            document.getElementById('desc').innerText = weatherData.now.text;
+            document.getElementById('humidity').innerText = weatherData.now.humidity + '%';
+            document.getElementById('wind').innerText = weatherData.now.windScale + '级';
+            
+            // 更新时间
+            const d = new Date();
+            document.getElementById('date').innerText = `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日 星期${['日','一','二','三','四','五','六'][d.getDay()]}`;
+
+        } catch (err) {
+            alert(err.message);
+        } finally {
+            loading.style.display = 'none';
+        }
+    }
+
+    // 事件监听
+    document.getElementById('searchBtn').onclick = queryWeather;
+    document.getElementById('cityInp').onkeypress = (e) => { if(e.key === 'Enter') queryWeather(); };
+
+    // 自动初始化
+    window.onload = queryWeather;
+</script>
+
+</body>
+</html>
